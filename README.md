@@ -8,24 +8,37 @@
 
 Dieses Skript loggt sich in den Notenbereich der HTW Dresden ein und überprüft in regelmäßigen Abständen, ob es neue Noten gibt. Wenn neue Noten vorhanden sind, wird eine Pushbullet-Benachrichtigung gesendet.
 
+Den Access-Token für Pushbullet könnt ihr, nachdem ihr euch einen Account angelegt habt, auf der [Pushbullet Website](https://www.pushbullet.com/#settings) unter `Settings > Account > Access Tokens` anlegen.
+
 Die Funktionsweise des Skripts basiert auf der Struktur der HTW-Noten-Seite mit der Version **v2.0.2**.
 
 Sollte es in naher Zukunft strukturänderungen an dieser Seite geben, könnte das Skript nicht mehr funktionieren.
 
 ## Setup & Installationsanleitung
 
-Legen Sie eine `.env`-Datei im Stammverzeichnis des Projekts an und füge die folgenden Umgebungsvariablen hinzu:
+1. Klone das Git-Repo auf den Zielsystem
 
-```bash
-# HTWD Credentials
-HTWD_USERNAME = "s*****"
-HTWD_PASSWORD = "*********"
+    ```bash
+    git clone git@github.com:MaxPtg/htwd-noten-checker.git
+    ```
 
-# Pushbullet Credentials
-PUSHBULLET_TOKEN = "o.*********"
-```
+2. Lege eine `.env`-Datei im Stammverzeichnis des Projekts an und füge die folgenden Umgebungsvariablen hinzu:
 
-Installiere Docker und Docker Compose auf dem Zielsystem. Weitere Informationen zur Installation findest du in der offiziellen Docker-Dokumentation und Docker Compose-Dokumentation.
+    ```bash
+    # HTWD Credentials
+    HTWD_USERNAME = "s*****"
+    HTWD_PASSWORD = "*********"
+
+    # Pushbullet Credentials
+    PUSHBULLET_TOKEN = "o.*********"
+    ```
+
+3. Installiere `docker` und `docker-compose` auf dem Zielsystem. Weitere Informationen zur Installation findest du in der offiziellen Docker-Dokumentation und deinem jeweiligen Zielsystem.
+
+    ```bash
+    sudo apt update -y && sudo apt upgrade -y
+    sudo apt install docker docker-compose -y 
+    ```
 
 ## Ausführung
 
