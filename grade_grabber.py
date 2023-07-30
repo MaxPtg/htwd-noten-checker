@@ -1,4 +1,4 @@
-import time, requests, json, re, datetime, os, threading, signal, sys
+import time, requests, json, re, datetime, os, threading, random
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
@@ -98,14 +98,51 @@ def run_grabber(username, password):
         
         if s is not None:
             grades_json, grades_count = get_current_grades(s)
+            
             global prev_grades_count
+            global prev_grades_json
+            
+            """ Tests
+            print("1. Aktuelle Noten: " + str(grades_count))
+            print("1. Vorherige Noten: " + str(prev_grades_count))
+            
+            if prev_grades_count > 0:
+                print("appending random grades on 2nd run ...")
+                grades_json.append({
+                    'grade': str(random.randint(1, 5)) + "," + str(random.randint(0, 9)),
+                    'module': "Testmodul"
+                })
+                grades_json.append({
+                    'grade': str(random.randint(1, 5)) + "," + str(random.randint(0, 9)),
+                    'module': "Testmodul"
+                })
+                grades_json.append({
+                    'grade': str(random.randint(1, 5)) + "," + str(random.randint(0, 9)),
+                    'module': "Testmodul"
+                })
+                grades_count += 3
+                
+            print("2. Aktuelle Noten: " + str(grades_count))
+            print("2. Vorherige Noten: " + str(prev_grades_count))
+            """
             
             if grades_count != prev_grades_count:
-                print("["+timestamp+"] >>> Anzahl der Noten: " + str(grades_count))
+                # Filter out new grades
+                new_grades = []
+                for grade in grades_json:
+                    if grade not in prev_grades_json:
+                        new_grades.append(grade)
+                
+                # Update prev_grades_json and send pushbullet notification for each new grade
+                if prev_grades_count > 0:
+                    send_pushbullet_notification("HTWD Noten Checker", "Es gibt neue Noten!", timestamp)
+                    for grade in new_grades:
+                        send_pushbullet_notification(grade['module'], "Note:" + grade['grade'], timestamp)
+                        
                 prev_grades_count = grades_count
-                send_pushbullet_notification("HTW-Noten", "Es gibt neue Noten! Anzahl: " + str(grades_count), timestamp)
-            else:
-                print("["+timestamp+"] >>> Keine neuen Noten!")
+                prev_grades_json = grades_json
+            #else:
+                #print("["+timestamp+"] >>> Keine neuen Noten!")
                 
         time.sleep(SLEEP_TIME)
 
@@ -113,6 +150,9 @@ def run_grabber(username, password):
 if __name__ == "__main__":
     global prev_grades_count
     prev_grades_count = 0
+    
+    global prev_grades_json
+    prev_grades_json = []
     
     thread = threading.Thread(
         target=run_grabber, 
@@ -123,3 +163,7 @@ if __name__ == "__main__":
     thread.start()
     
     print(">>> grade_grabber gestartet!")
+    
+    timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
+    send_pushbullet_notification("HTWD Noten Checker", "Der Noten-Checker wurde gestartet ("+timestamp+")!", timestamp)
+    
