@@ -1,0 +1,10 @@
+version: '3'
+
+services:
+  grade_grabber:
+    build: .
+    container_name: grade_grabber
+    restart: always
+    ports:
+      - 443
+      - 80
