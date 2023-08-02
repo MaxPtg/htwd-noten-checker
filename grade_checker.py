@@ -11,7 +11,7 @@ Script-Version:     1.0.0
 HTWD-Mobil-Version: 2.0.2
 
 First Release:  2023-07-30
-Latest Update:  2023-07-30
+Latest Update:  2023-08-02
 
 Ich übernehme keine Haftung für Schäden, die durch die Verwendung dieses Skripts entstehen.
 Jede Verwendung erfolgt auf eigene Gefahr.
@@ -27,10 +27,22 @@ load_dotenv()
 
 HTWD_URL = "https://mobil.htw-dresden.de/de/mein-studium/noten-und-pruefungen"
 PUSHBULLET_URL = "https://api.pushbullet.com/v2/pushes"
-SLEEP_TIME = 600
+SLEEP_TIME = 10
+LOG_DIR = "logs/"
+LOG_FILE = "latest.log"
 
 
-def send_pushbullet_notification(title, message, timestamp):
+# prints message with timestamp and saves it to log file
+def log(message):
+    timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
+    
+    print("["+timestamp+"] " + message)
+    
+    with open(LOG_DIR + LOG_FILE, "a") as log_file:
+        log_file.write("["+timestamp+"] " + message + "\n")
+
+
+def send_pushbullet_notification(title, message):
     data = {
         'type': 'note',
         'title': title,
@@ -42,11 +54,11 @@ def send_pushbullet_notification(title, message, timestamp):
     }
     response = requests.post(PUSHBULLET_URL, data=json.dumps(data), headers=headers)
     if response.status_code != 200:
-        print("["+timestamp+"] >>> Benachrichtigung konnte nicht gesendet werden!")
+        log("Pushbullet-Benachrichtigung konnte nicht gesendet werden!")
         
 
 # Login to the grades page of HTW Dresden
-def login(username, password, timestamp):
+def login(username, password):
     with requests.session() as s:
         payload = {
             '__referrer[@extension]': 'Felogin',
@@ -63,7 +75,7 @@ def login(username, password, timestamp):
         }
         response = s.post(HTWD_URL, data=payload)
         if response.status_code != 200:
-            print("["+timestamp+"] >>> Login fehlgeschlagen!")
+            log("Login auf HTWD Mobil fehlgeschlagen!")
             return None
         return s
 
@@ -88,13 +100,12 @@ def get_current_grades(s):
     return grades_json, len(grades_json)
 
 
-def run_grabber(username, password):
-    print(">>> Starte grade_grabber für " + username + " ...")
+# start grade checker thread
+def run_grade_checker(username, password):
+    log("Starte HTWD Noten-Checker für " + username + " ...")
     
     while True:
-        timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
-        
-        s = login(username, password, timestamp)
+        s = login(username, password)
         
         if s is not None:
             grades_json, grades_count = get_current_grades(s)
@@ -102,31 +113,7 @@ def run_grabber(username, password):
             global prev_grades_count
             global prev_grades_json
             
-            """ Tests
-            print("1. Aktuelle Noten: " + str(grades_count))
-            print("1. Vorherige Noten: " + str(prev_grades_count))
-            
-            if prev_grades_count > 0:
-                print("appending random grades on 2nd run ...")
-                grades_json.append({
-                    'grade': str(random.randint(1, 5)) + "," + str(random.randint(0, 9)),
-                    'module': "Testmodul"
-                })
-                grades_json.append({
-                    'grade': str(random.randint(1, 5)) + "," + str(random.randint(0, 9)),
-                    'module': "Testmodul"
-                })
-                grades_json.append({
-                    'grade': str(random.randint(1, 5)) + "," + str(random.randint(0, 9)),
-                    'module': "Testmodul"
-                })
-                grades_count += 3
-                
-            print("2. Aktuelle Noten: " + str(grades_count))
-            print("2. Vorherige Noten: " + str(prev_grades_count))
-            """
-            
-            if grades_count != prev_grades_count:
+            if grades_count > prev_grades_count:
                 # Filter out new grades
                 new_grades = []
                 for grade in grades_json:
@@ -135,19 +122,25 @@ def run_grabber(username, password):
                 
                 # Update prev_grades_json and send pushbullet notification for each new grade
                 if prev_grades_count > 0:
-                    send_pushbullet_notification("HTWD Noten Checker", "Es gibt neue Noten!", timestamp)
+                    send_pushbullet_notification("HTWD Noten Checker", "Es gibt neue Noten!")
                     for grade in new_grades:
-                        send_pushbullet_notification(grade['module'], "Note:" + grade['grade'], timestamp)
-                        
+                        send_pushbullet_notification(grade['module'], "Note:" + grade['grade'])
+                    
+                # update prev_grades_count and prev_grades_json
                 prev_grades_count = grades_count
                 prev_grades_json = grades_json
-            #else:
-                #print("["+timestamp+"] >>> Keine neuen Noten!")
+            else:
+                log("Keine neuen Noten! (" + str(grades_count) + " / " + str(prev_grades_count) + ")")
+                
                 
         time.sleep(SLEEP_TIME)
 
 
 if __name__ == "__main__":
+    # create log dir in current directory if not exists
+    if not os.path.exists(LOG_DIR):
+        os.mkdir(LOG_DIR)
+    
     global prev_grades_count
     prev_grades_count = 0
     
@@ -155,15 +148,15 @@ if __name__ == "__main__":
     prev_grades_json = []
     
     thread = threading.Thread(
-        target=run_grabber, 
+        target=run_grade_checker, 
         args=(
             os.getenv('HTWD_USERNAME'), 
             os.getenv('HTWD_PASSWORD'))
         )
     thread.start()
     
-    print(">>> grade_grabber gestartet!")
+    log("HTWD Noten-Checker gestartet!")
     
     timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
-    send_pushbullet_notification("HTWD Noten Checker", "Der Noten-Checker wurde gestartet ("+timestamp+")!", timestamp)
+    send_pushbullet_notification("HTWD Noten-Checker", "Der Noten-Checker wurde gestartet ("+timestamp+")!")
     
