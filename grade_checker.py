@@ -27,7 +27,7 @@ load_dotenv()
 
 HTWD_URL = "https://mobil.htw-dresden.de/de/mein-studium/noten-und-pruefungen"
 PUSHBULLET_URL = "https://api.pushbullet.com/v2/pushes"
-SLEEP_TIME = 10
+SLEEP_TIME = 600
 LOG_DIR = "logs/"
 LOG_FILE = "latest.log"
 
