@@ -8,10 +8,10 @@ Author:     Max Patecky
 Contact:    max.patecky@stud.htw-dresden.de
 
 Script-Version:     1.0.0
-HTWD-Mobil-Version: 2.0.2
+HTWD-Mobil-Version: 2.0.3
 
 First Release:  2023-07-30
-Latest Update:  2023-08-02
+Latest Update:  2024-01-21
 
 Ich übernehme keine Haftung für Schäden, die durch die Verwendung dieses Skripts entstehen.
 Jede Verwendung erfolgt auf eigene Gefahr.
@@ -19,7 +19,7 @@ Jede Verwendung erfolgt auf eigene Gefahr.
 Dieses Skript loggt sich in den Notenbereich der HTW Dresden ein und überprüft in regelmäßigen Abständen, ob es neue Noten gibt.
 Wenn neue Noten vorhanden sind, wird eine Pushbullet-Benachrichtigung gesendet.
 
-Die Funktionsweise des Skripts basiert auf der Struktur der HTW-Noten-Seite mit der Version v2.0.2. 
+Die Funktionsweise des Skripts basiert auf der Struktur der HTW-Noten-Seite mit der oben angegebenen Version.
 """
 
 
@@ -33,13 +33,13 @@ LOG_FILE = "latest.log"
 
 
 # prints message with timestamp and saves it to log file
-def log(message):
+def log(message, log_type="INFO"):
     timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
     
-    print("["+timestamp+"] " + message)
+    print(f"[{timestamp}] [{log_type}] {message}")
     
     with open(LOG_DIR + LOG_FILE, "a") as log_file:
-        log_file.write("["+timestamp+"] " + message + "\n")
+        log_file.write(f"[{timestamp}] [{log_type}] {message}\n")
 
 
 def send_pushbullet_notification(title, message):
@@ -54,12 +54,13 @@ def send_pushbullet_notification(title, message):
     }
     response = requests.post(PUSHBULLET_URL, data=json.dumps(data), headers=headers)
     if response.status_code != 200:
-        log("Pushbullet-Benachrichtigung konnte nicht gesendet werden!")
+        log("Pushbullet-Benachrichtigung konnte nicht gesendet werden!", "WARNING")
+        log("Response-Code: " + str(response.status_code), "WARNING")
         
 
 # Login to the grades page of HTW Dresden
 def login(username, password):
-    with requests.session() as s:
+    with requests.session() as session:
         payload = {
             '__referrer[@extension]': 'Felogin',
             '__referrer@controller]': 'Login',
@@ -73,16 +74,16 @@ def login(username, password):
             'logintype': 'login',
             'pid': '21@968399d1618f39ccb731fc883946c1e11b5c6a9f'
         }
-        response = s.post(HTWD_URL, data=payload)
+        response = session.post(HTWD_URL, data=payload)
         if response.status_code != 200:
-            log("Login auf HTWD Mobil fehlgeschlagen!")
+            log("Login auf HTWD Mobil fehlgeschlagen!", "CRITICAL")
             return None
-        return s
+        return session
 
 
 # Get the grades from the grades page of HTW Dresden
-def get_current_grades(s):
-    request = s.get(HTWD_URL).text
+def get_current_grades(session):
+    request = session.get(HTWD_URL).text
     html = BeautifulSoup(request, "html.parser")
     
     grade_elements = html.select('.align-items-baseline.collapsed.list-group-item.list-group-custom-item')
@@ -102,13 +103,13 @@ def get_current_grades(s):
 
 # start grade checker thread
 def run_grade_checker(username, password):
-    log("Starte HTWD Noten-Checker für " + username + " ...")
+    log("Konfigurierter Benutzer: " + username, "INFO")
     
     while True:
-        s = login(username, password)
+        session = login(username, password)
         
-        if s is not None:
-            grades_json, grades_count = get_current_grades(s)
+        if session is not None:
+            grades_json, grades_count = get_current_grades(session)
             
             global prev_grades_count
             global prev_grades_json
@@ -130,7 +131,7 @@ def run_grade_checker(username, password):
                 prev_grades_count = grades_count
                 prev_grades_json = grades_json
             else:
-                log("Keine neuen Noten! (" + str(grades_count) + " / " + str(prev_grades_count) + ")")
+                log("Keine neuen Noten! (" + str(grades_count) + " / " + str(prev_grades_count) + ")", "INFO")
                 
                 
         time.sleep(SLEEP_TIME)
@@ -155,8 +156,16 @@ if __name__ == "__main__":
         )
     thread.start()
     
-    log("HTWD Noten-Checker gestartet!")
+    log("HTWD Noten-Checker gestartet!", "INFO")
     
     timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
     send_pushbullet_notification("HTWD Noten-Checker", "Der Noten-Checker wurde gestartet ("+timestamp+")!")
+
+    try:
+        while thread.is_alive():
+            thread.join(1)
+    except KeyboardInterrupt:
+        thread._stop()
+        log("HTWD Noten-Checker wurde ordentlich beendet.", "INFO")
+
     
