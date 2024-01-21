@@ -1,4 +1,5 @@
-import time, requests, json, re, datetime, os, threading, random
+import time, requests, json, re, datetime, os, threading, random, sys, signal
+
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
@@ -35,11 +36,13 @@ LOG_FILE = "latest.log"
 # prints message with timestamp and saves it to log file
 def log(message, log_type="INFO"):
     timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
+    log_message = f"[{timestamp}] [{log_type}] {message}"
     
-    print(f"[{timestamp}] [{log_type}] {message}")
+    print(log_message)
+    sys.stdout.flush()
     
     with open(LOG_DIR + LOG_FILE, "a") as log_file:
-        log_file.write(f"[{timestamp}] [{log_type}] {message}\n")
+        log_file.write(log_message)
 
 
 def send_pushbullet_notification(title, message):
@@ -136,6 +139,13 @@ def run_grade_checker(username, password):
                 
         time.sleep(SLEEP_TIME)
 
+# handle sigterm shutdown
+def sigterm_handler(signal, frame):
+    thread._stop()
+    log("HTWD Noten-Checker wurde via SIGTERM beendet.", "INFO")
+    sys.exit(0)
+
+
 
 if __name__ == "__main__":
     # create log dir in current directory if not exists
@@ -161,11 +171,18 @@ if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
     send_pushbullet_notification("HTWD Noten-Checker", "Der Noten-Checker wurde gestartet ("+timestamp+")!")
 
+    # handle cli shutdown
     try:
         while thread.is_alive():
             thread.join(1)
     except KeyboardInterrupt:
         thread._stop()
-        log("HTWD Noten-Checker wurde ordentlich beendet.", "INFO")
+        log("HTWD Noten-Checker wurde via CLI beendet.", "INFO")
+
+    # handle sigterm shutdown
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
+    
+
 
     
