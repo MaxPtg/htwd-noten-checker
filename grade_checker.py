@@ -1,5 +1,6 @@
 import time, requests, json, re, datetime, os, threading, random, sys, signal
 
+from datetime import datetime
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
@@ -8,11 +9,11 @@ from bs4 import BeautifulSoup
 Author:     Max Patecky
 Contact:    max.patecky@stud.htw-dresden.de
 
-Script-Version:     1.0.0
+Script-Version:     1.1.0
 HTWD-Mobil-Version: 2.0.3
 
 First Release:  2023-07-30
-Latest Update:  2024-01-21
+Latest Update:  2024-02-07
 
 Ich übernehme keine Haftung für Schäden, die durch die Verwendung dieses Skripts entstehen.
 Jede Verwendung erfolgt auf eigene Gefahr.
@@ -24,18 +25,22 @@ Die Funktionsweise des Skripts basiert auf der Struktur der HTW-Noten-Seite mit 
 """
 
 
+# =================================================================================================
+# === SETUP 
+# =================================================================================================
+
 load_dotenv()
 
-HTWD_URL = "https://mobil.htw-dresden.de/de/mein-studium/noten-und-pruefungen"
-PUSHBULLET_URL = "https://api.pushbullet.com/v2/pushes"
-SLEEP_TIME = 600
 LOG_DIR = "logs/"
 LOG_FILE = "latest.log"
 
+# ====================================================
+# === LOGGING
+# ====================================================
 
 # prints message with timestamp and saves it to log file
 def log(message, log_type="INFO"):
-    timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
+    timestamp = datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
     log_message = f"[{timestamp}] [{log_type}] {message}"
     
     print(log_message)
@@ -44,6 +49,24 @@ def log(message, log_type="INFO"):
     with open(LOG_DIR + LOG_FILE, "a") as log_file:
         log_file.write(log_message)
 
+# ====================================================
+# === NOTIFICATIONS
+# ====================================================
+
+SERVICES = []
+if os.getenv('PUSHBULLET_ENABLED') == 'true':
+    SERVICES.append('pushbullet')
+if os.getenv('TELEGRAM_ENABLED') == 'true':
+    SERVICES.append('telegram')
+
+def send_notification(title, message):
+    for service in SERVICES:
+        if service == 'pushbullet':
+            send_pushbullet_notification(title, message)
+        elif service == 'telegram':
+            send_telegram_notification(title, message)
+        else:
+            log("Ungültiger Benachrichtigungsdienst", "WARNING")
 
 def send_pushbullet_notification(title, message):
     data = {
@@ -55,11 +78,27 @@ def send_pushbullet_notification(title, message):
         'Access-Token': os.getenv('PUSHBULLET_TOKEN'),
         'Content-Type': 'application/json'
     }
-    response = requests.post(PUSHBULLET_URL, data=json.dumps(data), headers=headers)
+    response = requests.post("https://api.pushbullet.com/v2/pushes", data=json.dumps(data), headers=headers)
     if response.status_code != 200:
         log("Pushbullet-Benachrichtigung konnte nicht gesendet werden!", "WARNING")
         log("Response-Code: " + str(response.status_code), "WARNING")
-        
+
+def send_telegram_notification(title, message):
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    text = f"{title}\n{message}"
+    
+    send_text = f'https://api.telegram.org/bot{bot_token}/sendMessage?chat_id={chat_id}&parse_mode=Markdown&text={text}'
+    
+    response = requests.get(send_text)
+    
+    if response.status_code != 200:
+        log("Telegram-Benachrichtigung konnte nicht gesendet werden!", "WARNING")
+        log("Response-Code: " + str(response.status_code), "WARNING")
+
+# ====================================================
+# === SCRAPER
+# ====================================================
 
 # Login to the grades page of HTW Dresden
 def login(username, password):
@@ -77,16 +116,19 @@ def login(username, password):
             'logintype': 'login',
             'pid': '21@968399d1618f39ccb731fc883946c1e11b5c6a9f'
         }
-        response = session.post(HTWD_URL, data=payload)
+        response = session.post(os.getenv('HTWD_URL'), data=payload)
         if response.status_code != 200:
             log("Login auf HTWD Mobil fehlgeschlagen!", "CRITICAL")
             return None
         return session
 
+# ====================================================
+# === GRADE CHECKER
+# ====================================================
 
 # Get the grades from the grades page of HTW Dresden
 def get_current_grades(session):
-    request = session.get(HTWD_URL).text
+    request = session.get(os.getenv('HTWD_URL')).text
     html = BeautifulSoup(request, "html.parser")
     
     grade_elements = html.select('.align-items-baseline.collapsed.list-group-item.list-group-custom-item')
@@ -103,12 +145,22 @@ def get_current_grades(session):
         })
     return grades_json, len(grades_json)
 
-
 # start grade checker thread
 def run_grade_checker(username, password):
     log("Konfigurierter Benutzer: " + username, "INFO")
     
     while True:
+        # prevent requests during night time to reduce ban risk
+        now = datetime.now().time()
+        allowed_start = datetime.strptime("06:00", "%H:%M").time()
+        allowed_end = datetime.strptime("22:00", "%H:%M").time()
+
+        if not allowed_start < now < allowed_end:
+            log("Es ist Nachtzeit, keine Anfragen werden gesendet.", "INFO")
+            time.sleep(int(os.getenv('POLL_INTERVAL')))
+            continue
+
+        # create session and get grades
         session = login(username, password)
         
         if session is not None:
@@ -126,9 +178,10 @@ def run_grade_checker(username, password):
                 
                 # Update prev_grades_json and send pushbullet notification for each new grade
                 if prev_grades_count > 0:
-                    send_pushbullet_notification("HTWD Noten Checker", "Es gibt neue Noten!")
-                    for grade in new_grades:
-                        send_pushbullet_notification(grade['module'], "Note:" + grade['grade'])
+                    send_notification("HTWD Noten Checker", "Es gibt neue Noten!")
+                    if os.getenv('POST_GRADES') == 'true':
+                        for grade in new_grades:
+                            send_notification(grade['module'], "Note:" + grade['grade'])
                     
                 # update prev_grades_count and prev_grades_json
                 prev_grades_count = grades_count
@@ -136,8 +189,7 @@ def run_grade_checker(username, password):
             else:
                 log("Keine neuen Noten! (" + str(grades_count) + " / " + str(prev_grades_count) + ")", "INFO")
                 
-                
-        time.sleep(SLEEP_TIME)
+        time.sleep(int(os.getenv('POLL_INTERVAL')))
 
 # handle sigterm shutdown
 def sigterm_handler(signal, frame):
@@ -145,7 +197,9 @@ def sigterm_handler(signal, frame):
     log("HTWD Noten-Checker wurde via SIGTERM beendet.", "INFO")
     sys.exit(0)
 
-
+# =================================================================================================
+# === RUNTIME 
+# =================================================================================================
 
 if __name__ == "__main__":
     # create log dir in current directory if not exists
@@ -168,8 +222,8 @@ if __name__ == "__main__":
     
     log("HTWD Noten-Checker gestartet!", "INFO")
     
-    timestamp = datetime.datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
-    send_pushbullet_notification("HTWD Noten-Checker", "Der Noten-Checker wurde gestartet ("+timestamp+")!")
+    timestamp = datetime.now().strftime("%d.%m.%Y-%H:%M:%S")
+    send_notification("HTWD Noten-Checker", "Der Noten-Checker wurde gestartet ("+timestamp+")!")
 
     # handle cli shutdown
     try:
@@ -181,8 +235,3 @@ if __name__ == "__main__":
 
     # handle sigterm shutdown
     signal.signal(signal.SIGTERM, sigterm_handler)
-
-    
-
-
-    

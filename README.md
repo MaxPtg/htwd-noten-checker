@@ -26,11 +26,22 @@ Sollte es in naher Zukunft strukturänderungen an dieser Seite geben, könnte da
 
     ```bash
     # HTWD Credentials
-    HTWD_USERNAME = "s*****"
-    HTWD_PASSWORD = "*********"
+    HTWD_URL = "https://mobil.htw-dresden.de/de/mein-studium/noten-und-pruefungen" # default
+    HTWD_USERNAME = "s*****" # s-Nummer
+    HTWD_PASSWORD = "*********" # Passwort
+
+    # Application Config
+    POLL_INTERVAL = 600 # every x seconds
+    POST_GRADES = "true" # or "false"
 
     # Pushbullet Credentials
+    PUSHBULLET_ENABLED = "false" # or "true"
     PUSHBULLET_TOKEN = "o.*********"
+
+    # Telegram Bot Credentials
+    TELEGRAM_ENABLED = "false" # or "true"
+    TELEGRAM_BOT_TOKEN = "**********:***********************"
+    TELEGRAM_CHAT_ID = "-*********"
     ```
 
 3. Installiere `docker` und `docker-compose` auf dem Zielsystem. Weitere Informationen zur Installation findest du in der offiziellen Docker-Dokumentation und deinem jeweiligen Zielsystem.
